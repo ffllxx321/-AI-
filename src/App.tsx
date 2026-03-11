@@ -80,7 +80,9 @@ export default function App() {
 
   const [newBrand, setNewBrand] = useState<Partial<Brand>>({
     name: '',
-    material_type: '木地板',
+    category: '地板',
+    sub_category: '实木地板',
+    material_type: '实木地板',
     model: '',
     price: 0,
     supplier: '',
@@ -133,7 +135,9 @@ export default function App() {
     const brandToAdd: Brand = {
       id: allBrands.length + 1,
       name: newBrand.name!,
-      material_type: newBrand.material_type!,
+      category: newBrand.category || '其它',
+      sub_category: newBrand.sub_category || newBrand.material_type || '其它',
+      material_type: newBrand.material_type || newBrand.sub_category || '其它',
       model: newBrand.model || 'N/A',
       price: newBrand.price || 0,
       unit: newBrand.unit || 'm²',
@@ -146,7 +150,9 @@ export default function App() {
     setIsAddingBrand(false);
     setNewBrand({
       name: '',
-      material_type: '木地板',
+      category: '地板',
+      sub_category: '实木地板',
+      material_type: '实木地板',
       model: '',
       price: 0,
       supplier: '',
@@ -931,18 +937,31 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">材料类别</label>
+                        <label className="text-xs font-bold text-slate-500 uppercase">大类类别</label>
                         <select 
-                          value={newBrand.material_type}
-                          onChange={(e) => setNewBrand({...newBrand, material_type: e.target.value})}
+                          value={newBrand.category}
+                          onChange={(e) => setNewBrand({...newBrand, category: e.target.value})}
                           className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm"
                         >
-                          <option value="木地板">木地板</option>
+                          <option value="地板">地板</option>
                           <option value="瓷砖">瓷砖</option>
                           <option value="涂料">涂料</option>
-                          <option value="壁纸">壁纸</option>
-                          <option value="石材">石材</option>
+                          <option value="卫浴">卫浴</option>
+                          <option value="灯具">灯具</option>
+                          <option value="五金">五金</option>
+                          <option value="家具">家具</option>
+                          <option value="厨电">厨电</option>
                         </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">具体品类</label>
+                        <input 
+                          type="text" 
+                          value={newBrand.sub_category}
+                          onChange={(e) => setNewBrand({...newBrand, sub_category: e.target.value, material_type: e.target.value})}
+                          className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm"
+                          placeholder="例如：木纹瓷砖"
+                        />
                       </div>
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-slate-500 uppercase">型号规格</label>
@@ -998,7 +1017,7 @@ export default function App() {
                           </div>
                           <div>
                             <h4 className="font-bold text-sm">{brand.name}</h4>
-                            <p className="text-[10px] text-slate-500">{brand.material_type} • {brand.model}</p>
+                            <p className="text-[10px] text-slate-500">{brand.category} · {brand.sub_category} • {brand.model}</p>
                           </div>
                         </div>
                         <div className="text-right">

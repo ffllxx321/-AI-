@@ -1,7 +1,9 @@
 export interface Brand {
   id: number;
   name: string;
-  material_type: string;
+  category: string;
+  sub_category: string;
+  material_type: string; // Keep for backward compatibility if needed
   model: string;
   price: number;
   unit: string;

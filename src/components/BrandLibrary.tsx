@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Star, Building2, MessageSquare, Box, Filter, ChevronRight, AlertCircle } from 'lucide-react';
+import { Search, Star, Building2, MessageSquare, Box, Filter, ChevronRight, AlertCircle, ArrowUpDown } from 'lucide-react';
 import Fuse from 'fuse.js';
 import { Brand } from '../types';
 import { mockBrands } from '../data/mockData';
@@ -21,6 +21,7 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'rating' | 'price' | 'none'>('none');
 
   // Sync with initialCategory
   React.useEffect(() => {
@@ -32,13 +33,13 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({
   }, [initialCategory]);
 
   const categories = useMemo(() => {
-    const cats = new Set(brands.map(b => b.material_type));
+    const cats = new Set(brands.map(b => b.sub_category));
     return Array.from(cats);
   }, [brands]);
 
   const fuse = useMemo(() => {
     return new Fuse(brands, {
-      keys: ['name', 'material_type', 'supplier', 'model'],
+      keys: ['name', 'category', 'sub_category', 'supplier', 'model'],
       threshold: 0.3,
     });
   }, [brands]);
@@ -49,20 +50,34 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({
       : brands;
 
     if (selectedCategory) {
-      results = results.filter(b => b.material_type === selectedCategory);
+      results = results.filter(b => b.sub_category === selectedCategory);
+    }
+
+    if (sortOrder === 'rating') {
+      results = [...results].sort((a, b) => b.rating - a.rating);
+    } else if (sortOrder === 'price') {
+      results = [...results].sort((a, b) => a.price - b.price);
     }
 
     return results;
-  }, [searchQuery, selectedCategory, fuse, brands]);
+  }, [searchQuery, selectedCategory, sortOrder, fuse, brands]);
 
   const fallbackBrands = useMemo(() => {
     if (filteredBrands.length > 0 || !broadCategory) return [];
     
     // Filter brands that match the broad category but not the specific selected category
-    return brands.filter(b => 
-      b.material_type === broadCategory && b.material_type !== selectedCategory
+    let results = brands.filter(b => 
+      b.category === broadCategory && b.sub_category !== selectedCategory
     );
-  }, [filteredBrands, broadCategory, brands, selectedCategory]);
+
+    if (sortOrder === 'rating') {
+      results = [...results].sort((a, b) => b.rating - a.rating);
+    } else if (sortOrder === 'price') {
+      results = [...results].sort((a, b) => a.price - b.price);
+    }
+
+    return results;
+  }, [filteredBrands, broadCategory, brands, selectedCategory, sortOrder]);
 
   const isShowingFallback = filteredBrands.length === 0 && fallbackBrands.length > 0 && selectedCategory === initialCategory;
 
@@ -76,7 +91,27 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({
             <p className="text-xs text-slate-500 mt-1">共收录 {brands.length} 个认证供应商</p>
           </div>
           <div className="flex gap-2">
-            <button className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+            <button 
+              onClick={() => {
+                if (sortOrder === 'none') setSortOrder('rating');
+                else if (sortOrder === 'rating') setSortOrder('price');
+                else setSortOrder('none');
+              }}
+              className={`p-2 rounded-lg transition-colors flex items-center gap-2 ${sortOrder !== 'none' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+              title={sortOrder === 'rating' ? '按评分排序' : sortOrder === 'price' ? '按价格排序' : '默认排序'}
+            >
+              <ArrowUpDown className="w-4 h-4" />
+              {sortOrder !== 'none' && <span className="text-[10px] font-bold">{sortOrder === 'rating' ? '评分' : '价格'}</span>}
+            </button>
+            <button 
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory(null);
+                setSortOrder('none');
+              }}
+              className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+              title="重置所有过滤器"
+            >
               <Filter className="w-4 h-4" />
             </button>
           </div>
@@ -152,7 +187,10 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({
                     </div>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-blue-400">{brand.material_type}</span>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-500 block mb-1">{brand.category}</span>
+                  <span className="text-xs font-bold text-blue-400">{brand.sub_category}</span>
+                </div>
               </div>
               
               <div className="space-y-2 mb-4">

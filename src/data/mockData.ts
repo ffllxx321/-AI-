@@ -23,12 +23,14 @@ export const mockBrands: Brand[] = Array.from({ length: 200 }, (_, i) => {
   const mainCat = categories[Math.floor(Math.random() * categories.length)];
   const subCats = subCategories[mainCat];
   // 70% chance to have a specific sub-category, 30% chance to just have the main category
-  const material_type = Math.random() > 0.3 ? subCats[Math.floor(Math.random() * subCats.length)] : mainCat;
+  const sub_category = Math.random() > 0.3 ? subCats[Math.floor(Math.random() * subCats.length)] : mainCat;
   
   return {
     id: i + 1,
     name: `${name}品牌`,
-    material_type,
+    category: mainCat,
+    sub_category: sub_category,
+    material_type: sub_category, // Keep for backward compatibility
     model: `PRO-${1000 + i}`,
     price: 100 + Math.floor(Math.random() * 900),
     unit: 'm²',
