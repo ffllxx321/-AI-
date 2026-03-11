@@ -23,7 +23,8 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  Key
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -55,9 +56,10 @@ export default function App() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [selectedHotspot, setSelectedHotspot] = useState<Hotspot | null>(null);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [budgetEntries, setBudgetEntries] = useState<BudgetEntry[]>([]);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
   const [changeRequest, setChangeRequest] = useState('');
   const [showChangeModal, setShowChangeModal] = useState(false);
   const [imageHeight, setImageHeight] = useState<number | null>(null);
@@ -70,6 +72,12 @@ export default function App() {
   const [allBrands, setAllBrands] = useState<Brand[]>(mockBrands);
   const [isAddingBrand, setIsAddingBrand] = useState(false);
   const [selectedShowroom, setSelectedShowroom] = useState<Showroom | null>(null);
+
+  // AI Settings
+  const [visionModel, setVisionModel] = useState<string>(localStorage.getItem('visionModel') || 'qwen3.5-flash');
+  const [imageModel, setImageModel] = useState<string>(localStorage.getItem('imageModel') || 'qwen-image-2.0');
+  const [qwenApiKey, setQwenApiKey] = useState<string>(localStorage.getItem('qwenApiKey') || '');
+
   const [newBrand, setNewBrand] = useState<Partial<Brand>>({
     name: '',
     material_type: '木地板',
@@ -103,14 +111,6 @@ export default function App() {
       fetchAllBrands();
     }
   }, [isBrandDbOpen]);
-
-  // Fetch brands when material type changes
-  useEffect(() => {
-    if (selectedHotspot) {
-      const filtered = allBrands.filter(b => b.material_type === selectedHotspot.materialType);
-      setBrands(filtered);
-    }
-  }, [selectedHotspot, allBrands]);
 
   const handleNewProject = () => {
     const confirm = window.confirm('是否创建新项目？当前未保存的更改将会丢失。');
@@ -168,59 +168,43 @@ export default function App() {
   const startAnalysis = async () => {
     if (!selectedImage) return;
     setIsAnalyzing(true);
+    setProgress(10);
+    setProgressMessage('正在准备图片数据...');
     
     try {
-      const base64Data = selectedImage.split(',')[1];
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [
-              { text: "分析这张建筑装饰图片。识别出图片中的主要装饰材料（如地板、墙面、吊顶等）。对于每种材料，给出它的名称、类别、特点（中文）。同时，请为每种材料在图片上建议一个热点坐标（x, y 比例，0-100）。以 JSON 格式返回，包含 hotspots 数组和 materials 数组。" },
-              { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              hotspots: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.STRING },
-                    x: { type: Type.NUMBER },
-                    y: { type: Type.NUMBER },
-                    materialName: { type: Type.STRING },
-                    materialType: { type: Type.STRING }
-                  }
-                }
-              },
-              materials: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.NUMBER },
-                    name: { type: Type.STRING },
-                    type: { type: Type.STRING },
-                    characteristics: { type: Type.STRING },
-                    base_price_min: { type: Type.NUMBER },
-                    base_price_max: { type: Type.NUMBER },
-                    install_price_min: { type: Type.NUMBER },
-                    install_price_max: { type: Type.NUMBER }
-                  }
-                }
-              }
-            }
-          }
-        }
+      const interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev < 85) return prev + Math.random() * 5;
+          return prev;
+        });
+      }, 800);
+
+      setProgressMessage('AI 正在识别空间结构与材料...');
+      const prompt = "分析这张建筑装饰图片。识别出图片中的主要装饰材料（如地板、墙面、吊顶等）。对于每种材料，给出它的名称、类别、特点（中文）。同时，请为每种材料在图片上建议一个热点坐标（x, y 比例，0-100）。以 JSON 格式返回，包含 hotspots 数组和 materials 数组。JSON 结构示例：{ \"hotspots\": [{ \"id\": \"1\", \"x\": 50, \"y\": 50, \"materialName\": \"地板\", \"materialType\": \"木地板\" }], \"materials\": [{ \"id\": 1, \"name\": \"地板\", \"type\": \"木地板\", \"characteristics\": \"耐磨,环保\", \"base_price_min\": 100, \"base_price_max\": 200, \"install_price_min\": 20, \"install_price_max\": 40 }] }";
+      
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          image: selectedImage,
+          prompt,
+          apiKey: qwenApiKey,
+          model: visionModel
+        })
       });
 
-      const result = JSON.parse(response.text);
+      clearInterval(interval);
+      setProgress(90);
+      setProgressMessage('正在生成概算报告...');
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Analysis failed");
+      }
+
+      const result = await response.json();
       setAnalysisResult({
         imageUrl: selectedImage,
         hotspots: result.hotspots,
@@ -241,45 +225,73 @@ export default function App() {
       setView('analysis');
     } catch (error) {
       console.error("Analysis failed:", error);
+      alert(`分析失败: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setIsAnalyzing(false);
+      setTimeout(() => setProgress(0), 500);
     }
   };
 
   const handleMaterialChangeRequest = async () => {
     if (!changeRequest || !selectedImage) return;
     setIsGeneratingImage(true);
+    setProgress(10);
+    setProgressMessage('正在提交生成任务...');
     setShowChangeModal(false);
 
     try {
-      const base64Data = selectedImage.split(',')[1];
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
-            { text: `根据用户要求修改这张图片：${changeRequest}。请生成一张新的效果图。` }
-          ]
-        }
+      const response = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          image: selectedImage,
+          prompt: `建筑装饰效果图修改。原始图片描述：室内空间。用户修改要求：${changeRequest}。请根据要求生成一张高质量的室内装饰效果图。`,
+          apiKey: qwenApiKey,
+          model: imageModel
+        })
       });
 
-      let newImageUrl = '';
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          newImageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
+      // Note: The backend already polls, so we can't easily show real-time progress from the backend polling here
+      // unless we change the architecture to return task ID to client. 
+      // For now, we simulate progress during the long wait.
+      const interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev < 90) return prev + 2;
+          return prev;
+        });
+        setProgressMessage(prev => {
+          if (progress < 40) return 'AI 正在构思空间布局...';
+          if (progress < 70) return '正在渲染材质细节...';
+          return '正在进行后期光影优化...';
+        });
+      }, 1000);
+
+      if (!response.ok) {
+        clearInterval(interval);
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Image generation failed");
       }
+
+      const result = await response.json();
+      clearInterval(interval);
+      setProgress(95);
+      setProgressMessage('正在应用新效果图...');
+      const newImageUrl = result.image;
 
       if (newImageUrl) {
         setSelectedImage(newImageUrl);
         // Re-analyze the new image
         await startAnalysis();
       }
+      setProgress(100);
     } catch (error) {
       console.error("Image generation failed:", error);
+      alert(`图像生成失败: ${error instanceof Error ? error.message : "未知错误"}`);
     } finally {
       setIsGeneratingImage(false);
+      setTimeout(() => setProgress(0), 500);
     }
   };
 
@@ -644,6 +656,7 @@ export default function App() {
                       brands={allBrands}
                       maxHeight={imageHeight ? `${imageHeight - 160}px` : '600px'} 
                       initialCategory={selectedHotspot?.materialType}
+                      broadCategory={selectedHotspot?.materialName}
                     />
                   </div>
                   
@@ -1083,15 +1096,42 @@ export default function App() {
                 <div className="space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-widest text-slate-500">AI 模型设定</h4>
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-bold">分析深度</p>
-                        <p className="text-[10px] text-slate-500">AI 识别材料的精细程度</p>
+                    <div className="space-y-2">
+                      <p className="text-sm font-bold">视觉模型 (Vision Model)</p>
+                      <select 
+                        value={visionModel}
+                        onChange={(e) => setVisionModel(e.target.value)}
+                        className="w-full bg-slate-800 border-slate-700 rounded-lg text-xs p-2"
+                      >
+                        <option value="qwen3.5-flash">qwen3.5-flash (推荐)</option>
+                        <option value="qwen-vl-plus">qwen-vl-plus</option>
+                        <option value="qwen-vl-max">qwen-vl-max</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-bold">图像生成模型 (Image Model)</p>
+                      <select 
+                        value={imageModel}
+                        onChange={(e) => setImageModel(e.target.value)}
+                        className="w-full bg-slate-800 border-slate-700 rounded-lg text-xs p-2"
+                      >
+                        <option value="qwen-image-2.0">qwen-image-2.0 (推荐)</option>
+                        <option value="qwen-image-v1">qwen-image-v1</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-bold">DashScope API Key</p>
+                      <div className="relative">
+                        <input 
+                          type="password"
+                          value={qwenApiKey}
+                          onChange={(e) => setQwenApiKey(e.target.value)}
+                          placeholder="输入您的 sk-..."
+                          className="w-full bg-slate-800 border-slate-700 rounded-lg text-xs p-2 pr-10"
+                        />
+                        <Key className="absolute right-3 top-2 w-4 h-4 text-slate-500" />
                       </div>
-                      <div className="flex bg-slate-800 p-1 rounded-lg">
-                        <button className="px-3 py-1 text-[10px] font-bold rounded bg-blue-600">标准</button>
-                        <button className="px-3 py-1 text-[10px] font-bold rounded text-slate-500">深度</button>
-                      </div>
+                      <p className="text-[10px] text-slate-500">留空则使用系统默认配置</p>
                     </div>
                   </div>
                 </div>
@@ -1106,7 +1146,12 @@ export default function App() {
 
               <div className="p-6 bg-slate-800/30 border-t border-slate-800 flex gap-3">
                 <button 
-                  onClick={() => setIsAppSettingOpen(false)}
+                  onClick={() => {
+                    localStorage.setItem('visionModel', visionModel);
+                    localStorage.setItem('imageModel', imageModel);
+                    localStorage.setItem('qwenApiKey', qwenApiKey);
+                    setIsAppSettingOpen(false);
+                  }}
                   className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20"
                 >
                   保存设置
@@ -1159,6 +1204,61 @@ export default function App() {
         showroom={selectedShowroom} 
         onClose={() => setSelectedShowroom(null)} 
       />
+
+      {/* Progress Overlay */}
+      <AnimatePresence>
+        {(isAnalyzing || isGeneratingImage) && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-xl"
+          >
+            <div className="w-full max-w-md p-8 text-center space-y-8">
+              <div className="relative inline-block">
+                <div className="w-24 h-24 rounded-full border-4 border-blue-600/20 flex items-center justify-center">
+                  <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs font-bold text-blue-400">{Math.round(progress)}%</span>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <h3 className="text-2xl font-bold text-white tracking-tight">
+                  {isAnalyzing ? 'AI 正在深度分析中' : 'AI 正在生成效果图'}
+                </h3>
+                <p className="text-slate-400 text-sm animate-pulse">
+                  {progressMessage}
+                </p>
+              </div>
+
+              <div className="relative h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 to-indigo-500 shadow-[0_0_15px_rgba(37,99,235,0.5)]"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 pt-4">
+                <div className={`p-3 rounded-xl border transition-all ${progress > 30 ? 'bg-blue-600/10 border-blue-500/50 text-blue-400' : 'bg-slate-900 border-slate-800 text-slate-600'}`}>
+                  <div className="text-[10px] font-bold uppercase mb-1">空间识别</div>
+                  <div className="h-1 w-full bg-current opacity-20 rounded-full" />
+                </div>
+                <div className={`p-3 rounded-xl border transition-all ${progress > 60 ? 'bg-blue-600/10 border-blue-500/50 text-blue-400' : 'bg-slate-900 border-slate-800 text-slate-600'}`}>
+                  <div className="text-[10px] font-bold uppercase mb-1">材质分析</div>
+                  <div className="h-1 w-full bg-current opacity-20 rounded-full" />
+                </div>
+                <div className={`p-3 rounded-xl border transition-all ${progress > 90 ? 'bg-blue-600/10 border-blue-500/50 text-blue-400' : 'bg-slate-900 border-slate-800 text-slate-600'}`}>
+                  <div className="text-[10px] font-bold uppercase mb-1">报告生成</div>
+                  <div className="h-1 w-full bg-current opacity-20 rounded-full" />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

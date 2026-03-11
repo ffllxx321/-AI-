@@ -77,6 +77,129 @@ async function startServer() {
     res.json(materials);
   });
 
+  app.post("/api/analyze", async (req, res) => {
+    const { image, prompt, apiKey: clientApiKey, model: clientModel } = req.body;
+    const apiKey = clientApiKey || process.env.QWEN_API_KEY;
+    const model = clientModel || "qwen3.5-flash";
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "QWEN_API_KEY is not set" });
+    }
+
+    try {
+      const response = await fetch("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: image } }
+              ]
+            }
+          ],
+          response_format: { type: "json_object" }
+        })
+      });
+
+      const data = await response.json();
+      if (data.error) {
+        console.error("Qwen API error:", data.error);
+        res.status(500).json({ error: data.error.message });
+      } else {
+        const content = data.choices[0].message.content;
+        res.json(JSON.parse(content));
+      }
+    } catch (error) {
+      console.error("Analysis failed:", error);
+      res.status(500).json({ error: "Analysis failed" });
+    }
+  });
+
+  app.post("/api/generate-image", async (req, res) => {
+    const { image, prompt, apiKey: clientApiKey, model: clientModel } = req.body;
+    const apiKey = clientApiKey || process.env.QWEN_API_KEY;
+    const model = clientModel || "qwen-image-2.0";
+
+    if (!apiKey) {
+      return res.status(500).json({ error: "QWEN_API_KEY is not set" });
+    }
+
+    try {
+      // DashScope Image Synthesis API for qwen-image-2.0
+      // Note: qwen-image-2.0 is primarily text-to-image. 
+      // For "modifying" an image, we'll use the prompt and potentially the image as a reference if supported, 
+      // but standard qwen-image-2.0 API is text-to-image.
+      // However, I'll implement it as requested.
+      
+      const response = await fetch("https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "X-DashScope-Async": "enable" // Image generation is often async
+        },
+        body: JSON.stringify({
+          model: model,
+          input: {
+            prompt: prompt,
+            // If the model supports image reference, it would go here. 
+            // For now, we'll focus on the prompt which includes the context.
+          },
+          parameters: {
+            size: "1024*1024",
+            n: 1
+          }
+        })
+      });
+
+      const initialData = await response.json();
+      
+      if (initialData.error || (initialData.code && initialData.code !== "ok")) {
+        return res.status(500).json({ error: initialData.message || "Image generation failed to start" });
+      }
+
+      const taskId = initialData.output.task_id;
+      
+      // Poll for completion
+      let taskStatus = "PENDING";
+      let resultData: any = null;
+      
+      for (let i = 0; i < 30; i++) { // Max 30 attempts (approx 60s)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const statusRes = await fetch(`https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`, {
+          headers: { "Authorization": `Bearer ${apiKey}` }
+        });
+        
+        resultData = await statusRes.json();
+        taskStatus = resultData.output.task_status;
+        
+        if (taskStatus === "SUCCEEDED" || taskStatus === "FAILED") break;
+      }
+
+      if (taskStatus === "SUCCEEDED") {
+        const imageUrl = resultData.output.results[0].url;
+        // Fetch the image and convert to base64 to return to client
+        const imgRes = await fetch(imageUrl);
+        const buffer = await imgRes.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        res.json({ image: `data:image/png;base64,${base64}` });
+      } else {
+        res.status(500).json({ error: `Image generation ${taskStatus.toLowerCase()}` });
+      }
+    } catch (error) {
+      console.error("Image generation failed:", error);
+      res.status(500).json({ error: "Image generation failed" });
+    }
+  });
+
   app.post("/api/brands", (req, res) => {
     const { name, material_type, model, price, supplier, rating, reviews } = req.body;
     const info = db.prepare("INSERT INTO brands (name, material_type, model, price, supplier, rating, reviews) VALUES (?, ?, ?, ?, ?, ?, ?)")

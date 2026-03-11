@@ -2,6 +2,16 @@
 import { Brand, Showroom } from '../types';
 
 const categories = ["瓷砖", "卫浴", "地板", "灯具", "涂料", "五金", "家具", "厨电"];
+const subCategories: Record<string, string[]> = {
+  "地板": ["实木地板", "复合地板", "强化地板", "竹地板"],
+  "瓷砖": ["大理石瓷砖", "抛光砖", "仿古砖", "木纹瓷砖"],
+  "涂料": ["乳胶漆", "艺术漆", "硅藻泥", "贝壳粉"],
+  "卫浴": ["智能马桶", "花洒", "浴缸", "浴室柜"],
+  "灯具": ["吊灯", "吸顶灯", "射灯", "灯带"],
+  "五金": ["门锁", "合页", "拉手", "水龙头"],
+  "家具": ["沙发", "餐桌", "床", "衣柜"],
+  "厨电": ["油烟机", "燃气灶", "洗碗机", "蒸烤箱"]
+};
 const brandPrefixes = ["奥", "贝尔", "科", "德", "法", "格", "海", "金", "利", "美", "诺", "欧", "派", "瑞", "圣", "特", "维", "西", "雅", "卓"];
 const brandSuffixes = ["斯", "克", "尼", "曼", "尔", "诺", "德", "森", "莱", "特", "奥", "普", "朗", "迪", "雅", "盛", "华", "泰", "丰", "源"];
 
@@ -9,7 +19,11 @@ export const mockBrands: Brand[] = Array.from({ length: 200 }, (_, i) => {
   const prefix = brandPrefixes[Math.floor(Math.random() * brandPrefixes.length)];
   const suffix = brandSuffixes[Math.floor(Math.random() * brandSuffixes.length)];
   const name = `${prefix}${suffix}${Math.random() > 0.5 ? brandSuffixes[Math.floor(Math.random() * brandSuffixes.length)] : ""}`;
-  const material_type = categories[Math.floor(Math.random() * categories.length)];
+  
+  const mainCat = categories[Math.floor(Math.random() * categories.length)];
+  const subCats = subCategories[mainCat];
+  // 70% chance to have a specific sub-category, 30% chance to just have the main category
+  const material_type = Math.random() > 0.3 ? subCats[Math.floor(Math.random() * subCats.length)] : mainCat;
   
   return {
     id: i + 1,

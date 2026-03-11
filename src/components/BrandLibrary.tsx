@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Star, Building2, MessageSquare, Box, Filter, ChevronRight } from 'lucide-react';
+import { Search, Star, Building2, MessageSquare, Box, Filter, ChevronRight, AlertCircle } from 'lucide-react';
 import Fuse from 'fuse.js';
 import { Brand } from '../types';
 import { mockBrands } from '../data/mockData';
@@ -9,9 +9,16 @@ interface BrandLibraryProps {
   onSelectBrand?: (brand: Brand) => void;
   maxHeight?: string;
   initialCategory?: string | null;
+  broadCategory?: string | null;
 }
 
-export const BrandLibrary: React.FC<BrandLibraryProps> = ({ brands, onSelectBrand, maxHeight, initialCategory }) => {
+export const BrandLibrary: React.FC<BrandLibraryProps> = ({ 
+  brands, 
+  onSelectBrand, 
+  maxHeight, 
+  initialCategory,
+  broadCategory 
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -19,6 +26,8 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({ brands, onSelectBran
   React.useEffect(() => {
     if (initialCategory) {
       setSelectedCategory(initialCategory);
+    } else {
+      setSelectedCategory(null);
     }
   }, [initialCategory]);
 
@@ -45,6 +54,17 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({ brands, onSelectBran
 
     return results;
   }, [searchQuery, selectedCategory, fuse, brands]);
+
+  const fallbackBrands = useMemo(() => {
+    if (filteredBrands.length > 0 || !broadCategory) return [];
+    
+    // Filter brands that match the broad category but not the specific selected category
+    return brands.filter(b => 
+      b.material_type === broadCategory && b.material_type !== selectedCategory
+    );
+  }, [filteredBrands, broadCategory, brands, selectedCategory]);
+
+  const isShowingFallback = filteredBrands.length === 0 && fallbackBrands.length > 0 && selectedCategory === initialCategory;
 
   return (
     <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -98,8 +118,22 @@ export const BrandLibrary: React.FC<BrandLibraryProps> = ({ brands, onSelectBran
         className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar"
         style={{ maxHeight: maxHeight || 'none' }}
       >
-        {filteredBrands.length > 0 ? (
-          filteredBrands.map(brand => (
+        {isShowingFallback && (
+          <div className="p-4 rounded-xl bg-amber-600/10 border border-amber-500/30 mb-6">
+            <div className="flex items-center gap-3 text-amber-500 mb-2">
+              <AlertCircle className="w-4 h-4" />
+              <p className="text-xs font-bold">未收藏该品类品牌</p>
+            </div>
+            <p className="text-[10px] text-slate-400 mb-3">您可以去添加品类品牌，或者查看下方为您推荐的其它类别品牌。</p>
+            <div className="flex items-center gap-2 text-blue-400 text-[10px] font-bold">
+              <span>为您推荐其它类别的品牌</span>
+              <div className="h-[1px] flex-1 bg-blue-500/20" />
+            </div>
+          </div>
+        )}
+
+        {(filteredBrands.length > 0 || isShowingFallback) ? (
+          (isShowingFallback ? fallbackBrands : filteredBrands).map(brand => (
             <div 
               key={brand.id} 
               className="p-4 rounded-xl border border-slate-800 bg-slate-800/30 hover:border-blue-500/30 transition-all group cursor-pointer"
